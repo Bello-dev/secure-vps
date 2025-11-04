@@ -374,6 +374,8 @@ for NEW_USER in "${USERS[@]}"; do
     chmod 700 "$SSH_DIR"
 
     # Génération de la clé ED25519
+    # Note: Clé sans passphrase (-N "") pour automatisation. Pour plus de sécurité,
+    # les utilisateurs devraient ajouter une passphrase après récupération de la clé.
     KEY_FILE="$SSH_DIR/id_ed25519"
     if [[ ! -f "$KEY_FILE" ]]; then
         ssh-keygen -t ed25519 -f "$KEY_FILE" -N "" -C "$NEW_USER@$(hostname)"
@@ -633,18 +635,21 @@ chmod 600 "$SUMMARY_FILE"
 show_warn "⚠️  ATTENTION : Sauvegardez bien ces clés privées ! ⚠️"
 show_warn "Ces clés sont nécessaires pour vous connecter au serveur. Ne les partagez avec personne."
 show_warn "Copiez-les et stockez-les dans un endroit sûr (ex: ~/.ssh/ sur votre machine locale)."
-show_info "\n📂 Toutes les clés privées sont sauvegardées dans : $KEYS_DIR"
+echo ""
+show_info "📂 Toutes les clés privées sont sauvegardées dans : $KEYS_DIR"
 show_info "📄 Fichier récapitulatif créé : $SUMMARY_FILE"
 
 for NEW_USER in "${USERS[@]}"; do
-    show_info "\n=========================================="
+    echo ""
+    show_info "=========================================="
     show_info "🔑 Clé privée SSH pour l'utilisateur : $NEW_USER"
     show_info "=========================================="
     cat "$KEYS_DIR/${NEW_USER}_id_ed25519"
     show_info "=========================================="
 done
 
-show_success "\n🎉 Sécurisation terminée !"
+echo ""
+show_success "🎉 Sécurisation terminée !"
 show_warn "⚠️  IMPORTANT : NE FERMEZ PAS CETTE SESSION SSH ! ⚠️"
 show_warn "Avant de quitter, testez votre nouvelle connexion SSH depuis une autre machine :"
 
@@ -652,12 +657,15 @@ for NEW_USER in "${USERS[@]}"; do
     show_secondary "➡ ssh -i ~/.ssh/${NEW_USER}_id_ed25519 -p $SSH_PORT $NEW_USER@<VOTRE_IP>"
 done
 
-show_info "\nSi la connexion fonctionne, alors vous pouvez fermer cette session."
-show_info "\n📋 Résumé des utilisateurs créés :"
+echo ""
+show_info "Si la connexion fonctionne, alors vous pouvez fermer cette session."
+echo ""
+show_info "📋 Résumé des utilisateurs créés :"
 for NEW_USER in "${USERS[@]}"; do
     show_info "   - $NEW_USER"
 done
-show_info "\n💡 Consultez le fichier $SUMMARY_FILE pour les instructions détaillées."
+echo ""
+show_info "💡 Consultez le fichier $SUMMARY_FILE pour les instructions détaillées."
 
 # === Vérification finale ===
 show_info "\n----------------------------------------"

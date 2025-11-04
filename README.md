@@ -133,6 +133,12 @@ nano ~/.ssh/secureuser1_id_ed25519
 chmod 600 ~/.ssh/secureuser1_id_ed25519
 ```
 
+**Note de sécurité** : Les clés sont générées sans passphrase pour faciliter l'automatisation. Pour une sécurité renforcée, vous pouvez ajouter une passphrase après avoir copié la clé :
+
+```bash
+ssh-keygen -p -f ~/.ssh/secureuser1_id_ed25519
+```
+
 ## 🔐 Connexion SSH
 
 Pour vous connecter après la configuration :
