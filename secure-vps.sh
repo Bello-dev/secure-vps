@@ -348,8 +348,10 @@ KEYS_DIR="/root/ssh_keys_$TIMESTAMP"
 mkdir -p "$KEYS_DIR"
 chmod 700 "$KEYS_DIR"
 
+USER_COUNT=0
 for NEW_USER in "${USERS[@]}"; do
-    show_info "Création de l'utilisateur : $NEW_USER"
+    USER_COUNT=$((USER_COUNT + 1))
+    show_info "[$USER_COUNT/$NUM_USERS] Création de l'utilisateur : $NEW_USER"
     
     if ! id "$NEW_USER" &>/dev/null; then
         adduser --disabled-password --gecos "" "$NEW_USER"
@@ -563,11 +565,76 @@ else
     fi
 fi
 
+# Création d'un fichier récapitulatif
+SUMMARY_FILE="$KEYS_DIR/README_CONNEXION.txt"
+cat <<EOSUMMARY > "$SUMMARY_FILE"
+=================================================================
+     RÉCAPITULATIF DE CONFIGURATION SSH - $(date)
+=================================================================
+
+📊 INFORMATIONS GÉNÉRALES
+-----------------------------------------------------------------
+Port SSH          : $SSH_PORT
+Nombre d'utilisateurs : ${#USERS[@]}
+IPs autorisées    : ${ALLOWED_SSH_IPS:-Toutes}
+Clés sauvegardées : $KEYS_DIR
+
+📝 UTILISATEURS CRÉÉS
+-----------------------------------------------------------------
+EOSUMMARY
+
+for NEW_USER in "${USERS[@]}"; do
+    echo "$NEW_USER" >> "$SUMMARY_FILE"
+done
+
+cat <<EOSUMMARY >> "$SUMMARY_FILE"
+
+🔐 INSTRUCTIONS DE CONNEXION
+-----------------------------------------------------------------
+Pour chaque utilisateur, copiez sa clé privée sur votre machine locale :
+
+1. Créez le fichier de clé :
+   nano ~/.ssh/UTILISATEUR_id_ed25519
+
+2. Collez la clé privée correspondante (voir ci-dessous)
+
+3. Définissez les permissions :
+   chmod 600 ~/.ssh/UTILISATEUR_id_ed25519
+
+4. Connectez-vous :
+   ssh -i ~/.ssh/UTILISATEUR_id_ed25519 -p $SSH_PORT UTILISATEUR@VOTRE_IP
+
+📋 CONFIGURATION SSH CLIENT (Recommandé)
+-----------------------------------------------------------------
+Ajoutez ceci dans ~/.ssh/config pour simplifier les connexions :
+
+EOSUMMARY
+
+for NEW_USER in "${USERS[@]}"; do
+    cat <<EOSUMMARY >> "$SUMMARY_FILE"
+Host vps-$NEW_USER
+    HostName VOTRE_IP
+    Port $SSH_PORT
+    User $NEW_USER
+    IdentityFile ~/.ssh/${NEW_USER}_id_ed25519
+
+EOSUMMARY
+done
+
+cat <<EOSUMMARY >> "$SUMMARY_FILE"
+Puis connectez-vous simplement avec : ssh vps-UTILISATEUR
+
+=================================================================
+EOSUMMARY
+
+chmod 600 "$SUMMARY_FILE"
+
 # Affichage des clés privées avec un warning
 show_warn "⚠️  ATTENTION : Sauvegardez bien ces clés privées ! ⚠️"
 show_warn "Ces clés sont nécessaires pour vous connecter au serveur. Ne les partagez avec personne."
 show_warn "Copiez-les et stockez-les dans un endroit sûr (ex: ~/.ssh/ sur votre machine locale)."
 show_info "\n📂 Toutes les clés privées sont sauvegardées dans : $KEYS_DIR"
+show_info "📄 Fichier récapitulatif créé : $SUMMARY_FILE"
 
 for NEW_USER in "${USERS[@]}"; do
     show_info "\n=========================================="
@@ -585,11 +652,12 @@ for NEW_USER in "${USERS[@]}"; do
     show_secondary "➡ ssh -i ~/.ssh/${NEW_USER}_id_ed25519 -p $SSH_PORT $NEW_USER@<VOTRE_IP>"
 done
 
-show_info "Si la connexion fonctionne, alors vous pouvez fermer cette session."
+show_info "\nSi la connexion fonctionne, alors vous pouvez fermer cette session."
 show_info "\n📋 Résumé des utilisateurs créés :"
 for NEW_USER in "${USERS[@]}"; do
     show_info "   - $NEW_USER"
 done
+show_info "\n💡 Consultez le fichier $SUMMARY_FILE pour les instructions détaillées."
 
 # === Vérification finale ===
 show_info "\n----------------------------------------"

@@ -246,6 +246,29 @@ Après l'exécution :
 - **Clients multiples** : accès isolés pour différents clients
 - **Services automatisés** : comptes dédiés pour CI/CD, monitoring, etc.
 
+### Bonnes pratiques
+
+1. **Nommage cohérent** : Utilisez des conventions claires (ex: `prenom.nom`, `service-role`)
+
+2. **Documentation** : Le fichier `README_CONNEXION.txt` généré contient toutes les informations nécessaires
+
+3. **Distribution sécurisée** : 
+   - Envoyez les clés privées via un canal sécurisé (pas par email)
+   - Utilisez un gestionnaire de mots de passe d'équipe
+   - Considérez un système de gestion de secrets (Vault, etc.)
+
+4. **Rotation des accès** :
+   - Supprimez les comptes d'utilisateurs qui n'ont plus besoin d'accès
+   - Régénérez les clés périodiquement pour les comptes critiques
+
+5. **Monitoring** :
+   - Vérifiez régulièrement les logs d'authentification
+   - Utilisez `last` et `lastlog` pour surveiller les connexions
+
+6. **Permissions** :
+   - Ne donnez pas sudo à tous les utilisateurs par défaut
+   - Créez des groupes avec permissions spécifiques selon les besoins
+
 ## 📊 Structure des Fichiers
 
 Après l'exécution, le script crée :
@@ -302,6 +325,29 @@ Vérifiez les permissions :
 ```bash
 chmod 600 ~/.ssh/nom_utilisateur_id_ed25519
 ```
+
+### Problème : Gestion de nombreux utilisateurs
+
+Si vous créez beaucoup d'utilisateurs (50+) :
+
+1. **Organisation des clés** : Utilisez un gestionnaire de clés comme `ssh-agent`
+   ```bash
+   ssh-add ~/.ssh/user1_id_ed25519
+   ssh-add ~/.ssh/user2_id_ed25519
+   ```
+
+2. **Fichier de configuration SSH** : Organisez vos connexions dans `~/.ssh/config`
+
+3. **Rotation des clés** : Pour désactiver un utilisateur :
+   ```bash
+   sudo userdel -r nom_utilisateur  # Supprime l'utilisateur et son répertoire
+   ```
+
+4. **Audit des connexions** : Surveillez les connexions actives
+   ```bash
+   who           # Voir les utilisateurs connectés
+   last          # Historique des connexions
+   ```
 
 ## 📄 Licence
 
