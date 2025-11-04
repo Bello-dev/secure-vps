@@ -125,6 +125,17 @@ validate_yes_no() {
     fi
 }
 
+# Fonction de validation pour un nombre positif
+validate_positive_number() {
+    local num="$1"
+    if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -gt 0 ]]; then
+        return 0
+    else
+        show_error "Veuillez entrer un nombre entier positif."
+        return 1
+    fi
+}
+
 # Génère un port SSH aléatoire entre 10000 et 65535 non utilisé
 generate_random_port() {
     local port
@@ -306,7 +317,21 @@ fi
 clear
 echo -e "${GREEN}🌟 Configuration du serveur 🌟${NC}"
 
-NEW_USER=$(prompt_user "Quel nom souhaitez-vous pour l'utilisateur sécurisé SSH ?" "secureuser" "validate_username")
+# Nombre d'utilisateurs à créer
+NUM_USERS=$(prompt_user "Combien d'utilisateurs souhaitez-vous créer ?" "1" "validate_positive_number")
+
+# Collecte des noms d'utilisateurs
+declare -a USERS
+for ((i=1; i<=NUM_USERS; i++)); do
+    if [[ $NUM_USERS -eq 1 ]]; then
+        DEFAULT_USER="secureuser"
+    else
+        DEFAULT_USER="secureuser$i"
+    fi
+    USER=$(prompt_user "Nom de l'utilisateur #$i ?" "$DEFAULT_USER" "validate_username")
+    USERS+=("$USER")
+done
+
 RANDOM_SSH_PORT=$(generate_random_port)
 SSH_PORT=$(prompt_user "Quel port souhaitez-vous pour SSH ?" "$RANDOM_SSH_PORT" "validate_port")
 ALLOWED_SSH_IPS=$(prompt_user "Entrez les IPs ou CIDR autorisés pour SSH (séparées par des espaces)" "" "validate_ips_list")
@@ -315,40 +340,61 @@ LIMIT_ICMP=$(prompt_user "Voulez-vous limiter les réponses ICMP (Ping) ?" "oui"
 
 show_success "🔒 Début de la sécurisation du serveur VPS..."
 
-# === 1. Création du nouvel utilisateur ===
-show_info "👤 Création de l'utilisateur SSH : $NEW_USER"
-if ! id "$NEW_USER" &>/dev/null; then
-    adduser --disabled-password --gecos "" "$NEW_USER"
-    show_success "✅ Utilisateur $NEW_USER créé."
-else
-    show_warn "⚠️ L'utilisateur $NEW_USER existe déjà."
-fi
+# === 1. Création des utilisateurs ===
+show_info "👤 Création de $NUM_USERS utilisateur(s) SSH..."
 
-# Ajouter à sudoers
-usermod -aG sudo "$NEW_USER"
-echo "$NEW_USER ALL=(ALL) NOPASSWD:ALL" | tee /etc/sudoers.d/$NEW_USER >/dev/null
-show_success "✅ Ajout de $NEW_USER aux sudoers."
+# Créer un dossier pour stocker les clés privées
+KEYS_DIR="/root/ssh_keys_$TIMESTAMP"
+mkdir -p "$KEYS_DIR"
+chmod 700 "$KEYS_DIR"
 
-# === 2. Génération et configuration des clés SSH ===
-show_info "🔑 Configuration des clés SSH..."
+USER_COUNT=0
+for NEW_USER in "${USERS[@]}"; do
+    USER_COUNT=$((USER_COUNT + 1))
+    show_info "[$USER_COUNT/$NUM_USERS] Création de l'utilisateur : $NEW_USER"
+    
+    if ! id "$NEW_USER" &>/dev/null; then
+        adduser --disabled-password --gecos "" "$NEW_USER"
+        show_success "✅ Utilisateur $NEW_USER créé."
+    else
+        show_warn "⚠️ L'utilisateur $NEW_USER existe déjà."
+    fi
 
-# Dossier .ssh de l'utilisateur
-SSH_DIR="/home/$NEW_USER/.ssh"
-mkdir -p "$SSH_DIR"
-chmod 700 "$SSH_DIR"
+    # Ajouter à sudoers
+    usermod -aG sudo "$NEW_USER"
+    echo "$NEW_USER ALL=(ALL) NOPASSWD:ALL" | tee /etc/sudoers.d/$NEW_USER >/dev/null
+    show_success "✅ Ajout de $NEW_USER aux sudoers."
 
-# Génération de la clé ED25519 si elle n'existe pas
-if [[ ! -f "$SSH_DIR/id_ed25519" ]]; then
-    ssh-keygen -t ed25519 -f "$SSH_DIR/id_ed25519" -N ""
-    show_success "✅ Clé SSH ED25519 générée."
-fi
+    # === 2. Génération et configuration des clés SSH ===
+    show_info "🔑 Configuration des clés SSH pour $NEW_USER..."
 
-# Ajout de la clé publique dans authorized_keys
-cat "$SSH_DIR/id_ed25519.pub" >> "$SSH_DIR/authorized_keys"
-chmod 600 "$SSH_DIR/authorized_keys"
-chown -R "$NEW_USER:$NEW_USER" "$SSH_DIR"
+    # Dossier .ssh de l'utilisateur
+    SSH_DIR="/home/$NEW_USER/.ssh"
+    mkdir -p "$SSH_DIR"
+    chmod 700 "$SSH_DIR"
 
-show_success "✅ Clé SSH installée pour $NEW_USER."
+    # Génération de la clé ED25519
+    # Note: Clé sans passphrase (-N "") pour automatisation. Pour plus de sécurité,
+    # les utilisateurs devraient ajouter une passphrase après récupération de la clé.
+    KEY_FILE="$SSH_DIR/id_ed25519"
+    if [[ ! -f "$KEY_FILE" ]]; then
+        ssh-keygen -t ed25519 -f "$KEY_FILE" -N "" -C "$NEW_USER@$(hostname)"
+        show_success "✅ Clé SSH ED25519 générée pour $NEW_USER."
+    fi
+
+    # Ajout de la clé publique dans authorized_keys
+    cat "$KEY_FILE.pub" >> "$SSH_DIR/authorized_keys"
+    chmod 600 "$SSH_DIR/authorized_keys"
+    chown -R "$NEW_USER:$NEW_USER" "$SSH_DIR"
+
+    # Copie de la clé privée dans le dossier de sauvegarde
+    cp "$KEY_FILE" "$KEYS_DIR/${NEW_USER}_id_ed25519"
+    cp "$KEY_FILE.pub" "$KEYS_DIR/${NEW_USER}_id_ed25519.pub"
+    
+    show_success "✅ Clé SSH installée pour $NEW_USER."
+done
+
+show_success "✅ Tous les utilisateurs ont été créés avec leurs clés SSH."
 
 # === 3. Sécurisation du service SSH ===
 show_info "🔧 Sécurisation du service SSH..."
@@ -521,20 +567,105 @@ else
     fi
 fi
 
-# Affichage de la clé privée avec un warning
-show_warn "⚠️  ATTENTION : Sauvegardez bien cette clé privée ! ⚠️"
-show_warn "Cette clé est nécessaire pour vous connecter au serveur. Ne la partagez avec personne."
-show_warn "Copiez-la et stockez-la dans un endroit sûr (ex: ~/.ssh/vps sur votre machine locale)."
-show_info "Votre clé privée SSH :"
-show_info "----------------------------------------"
-show_info "$(cat $SSH_DIR/id_ed25519)"
-show_info "----------------------------------------"
+# Création d'un fichier récapitulatif
+SUMMARY_FILE="$KEYS_DIR/README_CONNEXION.txt"
+cat <<EOSUMMARY > "$SUMMARY_FILE"
+=================================================================
+     RÉCAPITULATIF DE CONFIGURATION SSH - $(date)
+=================================================================
 
+📊 INFORMATIONS GÉNÉRALES
+-----------------------------------------------------------------
+Port SSH          : $SSH_PORT
+Nombre d'utilisateurs : ${#USERS[@]}
+IPs autorisées    : ${ALLOWED_SSH_IPS:-Toutes}
+Clés sauvegardées : $KEYS_DIR
+
+📝 UTILISATEURS CRÉÉS
+-----------------------------------------------------------------
+EOSUMMARY
+
+for NEW_USER in "${USERS[@]}"; do
+    echo "$NEW_USER" >> "$SUMMARY_FILE"
+done
+
+cat <<EOSUMMARY >> "$SUMMARY_FILE"
+
+🔐 INSTRUCTIONS DE CONNEXION
+-----------------------------------------------------------------
+Pour chaque utilisateur, copiez sa clé privée sur votre machine locale :
+
+1. Créez le fichier de clé :
+   nano ~/.ssh/UTILISATEUR_id_ed25519
+
+2. Collez la clé privée correspondante (voir ci-dessous)
+
+3. Définissez les permissions :
+   chmod 600 ~/.ssh/UTILISATEUR_id_ed25519
+
+4. Connectez-vous :
+   ssh -i ~/.ssh/UTILISATEUR_id_ed25519 -p $SSH_PORT UTILISATEUR@VOTRE_IP
+
+📋 CONFIGURATION SSH CLIENT (Recommandé)
+-----------------------------------------------------------------
+Ajoutez ceci dans ~/.ssh/config pour simplifier les connexions :
+
+EOSUMMARY
+
+for NEW_USER in "${USERS[@]}"; do
+    cat <<EOSUMMARY >> "$SUMMARY_FILE"
+Host vps-$NEW_USER
+    HostName VOTRE_IP
+    Port $SSH_PORT
+    User $NEW_USER
+    IdentityFile ~/.ssh/${NEW_USER}_id_ed25519
+
+EOSUMMARY
+done
+
+cat <<EOSUMMARY >> "$SUMMARY_FILE"
+Puis connectez-vous simplement avec : ssh vps-UTILISATEUR
+
+=================================================================
+EOSUMMARY
+
+chmod 600 "$SUMMARY_FILE"
+
+# Affichage des clés privées avec un warning
+show_warn "⚠️  ATTENTION : Sauvegardez bien ces clés privées ! ⚠️"
+show_warn "Ces clés sont nécessaires pour vous connecter au serveur. Ne les partagez avec personne."
+show_warn "Copiez-les et stockez-les dans un endroit sûr (ex: ~/.ssh/ sur votre machine locale)."
+echo ""
+show_info "📂 Toutes les clés privées sont sauvegardées dans : $KEYS_DIR"
+show_info "📄 Fichier récapitulatif créé : $SUMMARY_FILE"
+
+for NEW_USER in "${USERS[@]}"; do
+    echo ""
+    show_info "=========================================="
+    show_info "🔑 Clé privée SSH pour l'utilisateur : $NEW_USER"
+    show_info "=========================================="
+    cat "$KEYS_DIR/${NEW_USER}_id_ed25519"
+    show_info "=========================================="
+done
+
+echo ""
 show_success "🎉 Sécurisation terminée !"
 show_warn "⚠️  IMPORTANT : NE FERMEZ PAS CETTE SESSION SSH ! ⚠️"
 show_warn "Avant de quitter, testez votre nouvelle connexion SSH depuis une autre machine :"
-show_secondary "➡ ssh -i ~/.ssh/id_ed25519 -p $SSH_PORT $NEW_USER@<VOTRE_IP>"
+
+for NEW_USER in "${USERS[@]}"; do
+    show_secondary "➡ ssh -i ~/.ssh/${NEW_USER}_id_ed25519 -p $SSH_PORT $NEW_USER@<VOTRE_IP>"
+done
+
+echo ""
 show_info "Si la connexion fonctionne, alors vous pouvez fermer cette session."
+echo ""
+show_info "📋 Résumé des utilisateurs créés :"
+for NEW_USER in "${USERS[@]}"; do
+    show_info "   - $NEW_USER"
+done
+echo ""
+show_info "💡 Consultez le fichier $SUMMARY_FILE pour les instructions détaillées."
 
 # === Vérification finale ===
 show_info "\n----------------------------------------"
