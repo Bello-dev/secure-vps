@@ -357,7 +357,7 @@ Si vous créez beaucoup d'utilisateurs (50+) :
 
 ## 📄 Licence
 
-Copyright MozzyPC (https://www.youtube.com/@mozzypc)
+Copyright Bello-dev 2025 (https://www.linkedin.com/in/bello-dev-ops?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app)
 
 ## 🤝 Contributions
 
